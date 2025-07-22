@@ -1,0 +1,11 @@
+[submodule "vesc"]
+	path = vesc
+	url = https://github.com/f1tenth/vesc.git
+	branch = humble
+[submodule "ackermann_mux"]
+	path = ackermann_mux
+	url = https://github.com/f1tenth/ackermann_mux.git
+[submodule "teleop_tools"]
+	path = teleop_tools
+	url = https://github.com/f1tenth/teleop_tools.git
+	branch = humble-devel
