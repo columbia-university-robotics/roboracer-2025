@@ -1,0 +1,12 @@
+slam_toolbox:
+  ros__parameters:
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /scan  # LiDAR topic (e.g., from Hokuyo)
+    mode: mapping  # 'mapping' for initial map creation, 'localization' for racing
+    minimum_travel_distance: 0.5
+    minimum_travel_heading: 0.5
+    use_map_saver: true
+
+
