@@ -1,0 +1,41 @@
+slam_toolbox:
+  ros__parameters:
+    # Frame configuration
+    odom_frame: base_link
+    map_frame: map
+    base_frame: base_link
+    
+    # Topic configuration
+    scan_topic: /scan
+    
+    # Mode configuration
+    mode: mapping  # 'mapping' for initial map creation, 'localization' for racing
+    
+    # Queue and timing configuration to prevent message dropping
+    scan_queue_size: 10
+    transform_timeout: 0.2
+    update_rate: 10.0
+    tf_buffer_duration: 10.0
+    
+    # SLAM parameters
+    resolution: 0.05
+    min_laser_range: 0.10
+    max_laser_range: 20.0
+    minimum_time_interval: 0.2
+    transform_publish_period: 0.05
+    
+    # Map publish behavior for RViz live updates
+    map_update_interval: 1.0
+    always_send_full_map: true
+    
+    # Memory management
+    max_queue_size: 10
+    use_tree: true
+    use_scan_matching: true
+    use_scan_barycenter: true
+    
+    # Optimization parameters
+    # linear_update: 0.5
+    # angular_update: 0.25
+    # linear_scan_update: 0.5
+    # angular_scan_update: 0.25
