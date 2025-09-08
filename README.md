@@ -26,7 +26,7 @@ ros2 launch f1tenth_stack bringup_launch.py
 
 The general format of a ROS2 launch command is `ros2 launch <package_name> <launch_file>`. In the case of teleop, we're launching the `bringup_launch.py` file in the `f1tenth_stack` package. 
 
-Now, when do you need to run `colcon build`? Each package in the project consists of parameter files (`*.yaml`), launch files (`*launch.py`), and other code files (`*.py`, `*.cpp`). You do not need to run `colcon build` if you change a parameter file - you just need to relaunch your launch file. 
+Now, when do you need to run `colcon build`? Each package in the project consists of parameter files (`*.yaml`), launch files (`*launch.py`), and other code files (`*.py`, `*.cpp`). You do not need to run `colcon build` if you change a parameter file - you just need to relaunch your launch file. However, if you change any other file, you need to run `colcon build`. 
 
 ## Writing Code
 
