@@ -3,7 +3,7 @@ The RoboRacer team's 2025 autonomous vehicle code.
 
 ## Project Structure
 
-In `src/f1tenth`, you'll find various folders that represent different *packages* used by our car. Some of those packages are provided by RoboRacer and enable the basic functionality of the car, like driving with a joystick, a method of interfacing with the LIDAR, etc. Others, like the localization package, are packages that we have created to serve different functionalities of the car. The idea is that RoboRacer provides a base set of packages that gets your car up and running synchrononusly (i.e. not autonomously), so that you can focus on doing the autonomous stuff.
+In `src/f1tenth`, you'll find various folders that represent different *packages* used by our car. Some of those packages are provided by RoboRacer and enable the car's basic functionality, such as driving with a joystick and interfacing with the LIDAR. Others, like the localization package, are packages that we have created to serve different functionalities of the car. The idea is that RoboRacer provides a base set of packages that gets your car up and running synchronously (i.e. not autonomously), so that you can focus on doing the autonomous stuff.
 
 The following packages are provided/required by RoboRacer:
 * f1tenth_stack
@@ -18,7 +18,7 @@ So far, we have been working on the following packages:
 
 To build the project, including every package in it, run `colcon build` inside the root directory. `colcon` is the build tool provided by [ROS2](https://docs.ros.org/en/humble/index.html).
 
-Once you've build the project, you should run some launch file, depending on what you want to do. For example, to run teleop and drive the car with a controller/joystick, you'd run
+Once you've built the project, run a launch file to perform your desired task. For example, to run teleop and drive the car with a controller/joystick, you'd run
 
 ```sh
 ros2 launch f1tenth_stack bringup_launch.py
