@@ -44,3 +44,8 @@ install(DIRECTORY maps
 )
 
 ament_package()
+
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
