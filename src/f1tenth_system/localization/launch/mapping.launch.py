@@ -57,8 +57,8 @@ def generate_launch_description_from_context(context):
     nodes_to_launch.append(rviz_node)
     
     if mode == 'mapping':
-        # SLAM Toolbox for mapping - launch the online_async_launch.py file
-        slam_params_file = '/home/curc/Desktop/f1tenth_ws/src/f1tenth_system/localization/params/slam_toolbox_mapping.yaml'
+        # SLAM Toolbox for mapping
+        slam_params_file = os.path.join(get_package_share_directory('localization'), 'params', 'slam_toolbox_mapping.yaml')
         
         slam_toolbox_dir = get_package_share_directory('slam_toolbox')
         
@@ -68,12 +68,20 @@ def generate_launch_description_from_context(context):
             ),
             launch_arguments={
                 'use_sim_time': 'False',
-                'params_file': slam_params_file
+                'slam_params_file': slam_params_file
             }.items()
         )
         nodes_to_launch.append(slam_launch)
         
         nodes_to_launch.append(LogInfo(msg='Starting SLAM Toolbox in MAPPING mode'))
+
+        # Nav2 Navigation
+        navigation_launch = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(get_package_share_directory('nav2_bringup'), 'launch', 'navigation_launch.py')
+            ),
+        )
+        nodes_to_launch.append(navigation_launch)
     
     elif mode == 'localization':
         # Validate map file
@@ -114,15 +122,22 @@ def generate_launch_description_from_context(context):
         )
         nodes_to_launch.append(map_server_bringup)
         
+        amcl_params_file = os.path.join(
+            get_package_share_directory('localization'),
+            'params',
+            'amcl_config.yaml'
+        )
+        
         # AMCL node
         amcl_node = Node(
             package='nav2_amcl',
             executable='amcl',
             name='amcl',
             output='screen',
-            parameters=[{
-                'use_sim_time': False
-            }]
+            parameters=[
+                amcl_params_file,
+                { 'use_sim_time': False }
+            ]
         )
         nodes_to_launch.append(amcl_node)
         
@@ -157,10 +172,10 @@ def generate_launch_description():
     map_file_arg = DeclareLaunchArgument(
         'map_file',
         default_value='',
-        description='Path to map YAML file (required for localization mode). Example: /path/to/map.yaml'
+        description='Absolute path to map YAML file (required for localization mode). Example: /home/curc/Desktop/f1tenth_ws/src/f1tenth_system/localization/maps/my_map.yaml'
     )
     
-    # Use OpaqueFunction to generate nodes based on context
+    # Use OpaqueFunction to generate nodes based on context since it defers evaluation until launch args are parsed
     launch_nodes = OpaqueFunction(function=generate_launch_description_from_context)
     
     return LaunchDescription([
