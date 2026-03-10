@@ -1,0 +1,6 @@
+build/
+install/
+log/
+ip_update/
+.venv/
+*.desktop

@@ -1,0 +1,28 @@
+occupancy_grid_planner:
+  ros__parameters:
+    map_topic: /map
+    odom_topic: /ego_racecar/odom
+    goal_topic: /planner/goal_pose
+    path_topic: /planner/path
+    waypoints_topic: /planner/waypoints
+    occupancy_threshold: 50
+    allow_unknown: false
+    inflation_radius: 0.20
+    goal_tolerance: 0.25
+    max_goal_search_radius: 1.50
+    waypoint_spacing: 0.50
+
+pure_pursuit_follower:
+  ros__parameters:
+    odom_topic: /ego_racecar/odom
+    path_topic: /planner/path
+    drive_topic: /drive
+    control_rate: 20.0
+    lookahead_distance: 1.2
+    wheelbase: 0.33
+    max_steering_angle: 0.4189
+    desired_speed: 1.5
+    min_speed: 0.8
+    max_speed: 2.5
+    goal_tolerance: 0.35
+    stop_at_goal: true
