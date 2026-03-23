@@ -2,8 +2,10 @@ import math
 
 import rclpy
 from ackermann_msgs.msg import AckermannDriveStamped
-from nav_msgs.msg import Odometry, Path
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from nav_msgs.msg import Path
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 
 def yaw_from_quaternion(q) -> float:
@@ -24,7 +26,7 @@ class PurePursuitFollower(Node):
     def __init__(self) -> None:
         super().__init__("pure_pursuit_follower")
 
-        self.declare_parameter("odom_topic", "/ego_racecar/odom")
+        self.declare_parameter("pose_topic", "/localization/pose")
         self.declare_parameter("path_topic", "/planner/path")
         self.declare_parameter("drive_topic", "/drive")
         self.declare_parameter("control_rate", 20.0)
@@ -47,24 +49,36 @@ class PurePursuitFollower(Node):
         )
 
         self.create_subscription(
-            Odometry, self.get_parameter("odom_topic").value, self.odom_callback, 10
+            PoseWithCovarianceStamped,
+            self.get_parameter("pose_topic").value,
+            self.pose_callback,
+            10,
+        )
+        latched_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
         self.create_subscription(
-            Path, self.get_parameter("path_topic").value, self.path_callback, 10
+            Path,
+            self.get_parameter("path_topic").value,
+            self.path_callback,
+            latched_qos,
         )
 
         rate_hz = float(self.get_parameter("control_rate").value)
         self.timer = self.create_timer(1.0 / rate_hz, self.control_callback)
         self.get_logger().info(
-            "Follower ready on odom=%s path=%s drive=%s"
+            "Follower ready on pose=%s path=%s drive=%s"
             % (
-                self.get_parameter("odom_topic").value,
+                self.get_parameter("pose_topic").value,
                 self.get_parameter("path_topic").value,
                 self.get_parameter("drive_topic").value,
             )
         )
 
-    def odom_callback(self, msg: Odometry) -> None:
+    def pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.current_pose = msg.pose.pose.position
         self.current_yaw = yaw_from_quaternion(msg.pose.pose.orientation)
 

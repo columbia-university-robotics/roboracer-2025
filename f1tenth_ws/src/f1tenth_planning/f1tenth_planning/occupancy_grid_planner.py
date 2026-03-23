@@ -4,9 +4,10 @@ from typing import Iterable
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import Pose, PoseArray, PoseStamped
-from nav_msgs.msg import OccupancyGrid, Odometry, Path
+from geometry_msgs.msg import Pose, PoseArray, PoseStamped, PoseWithCovarianceStamped
+from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from scipy import ndimage
 
 
@@ -21,7 +22,7 @@ class OccupancyGridPlanner(Node):
         super().__init__("occupancy_grid_planner")
 
         self.declare_parameter("map_topic", "/map")
-        self.declare_parameter("odom_topic", "/ego_racecar/odom")
+        self.declare_parameter("pose_topic", "/localization/pose")
         self.declare_parameter("goal_topic", "/planner/goal_pose")
         self.declare_parameter("path_topic", "/planner/path")
         self.declare_parameter("waypoints_topic", "/planner/waypoints")
@@ -36,28 +37,41 @@ class OccupancyGridPlanner(Node):
         self.occupied: np.ndarray | None = None
         self.current_pose: Pose | None = None
 
+        latched_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+
         self.path_pub = self.create_publisher(
-            Path, self.get_parameter("path_topic").value, 10
+            Path, self.get_parameter("path_topic").value, latched_qos
         )
         self.waypoints_pub = self.create_publisher(
-            PoseArray, self.get_parameter("waypoints_topic").value, 10
+            PoseArray, self.get_parameter("waypoints_topic").value, latched_qos
         )
 
         self.create_subscription(
-            OccupancyGrid, self.get_parameter("map_topic").value, self.map_callback, 10
+            OccupancyGrid,
+            self.get_parameter("map_topic").value,
+            self.map_callback,
+            latched_qos,
         )
         self.create_subscription(
-            Odometry, self.get_parameter("odom_topic").value, self.odom_callback, 10
+            PoseWithCovarianceStamped,
+            self.get_parameter("pose_topic").value,
+            self.pose_callback,
+            10,
         )
         self.create_subscription(
             PoseStamped, self.get_parameter("goal_topic").value, self.goal_callback, 10
         )
 
         self.get_logger().info(
-            "Planner ready on map=%s odom=%s goal=%s"
+            "Planner ready on map=%s pose=%s goal=%s"
             % (
                 self.get_parameter("map_topic").value,
-                self.get_parameter("odom_topic").value,
+                self.get_parameter("pose_topic").value,
                 self.get_parameter("goal_topic").value,
             )
         )
@@ -84,7 +98,7 @@ class OccupancyGridPlanner(Node):
             f"{msg.info.resolution:.3f} m/cell."
         )
 
-    def odom_callback(self, msg: Odometry) -> None:
+    def pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.current_pose = msg.pose.pose
 
     def goal_callback(self, msg: PoseStamped) -> None:
@@ -92,7 +106,7 @@ class OccupancyGridPlanner(Node):
             self.get_logger().warning("Cannot plan: no occupancy grid received.")
             return
         if self.current_pose is None:
-            self.get_logger().warning("Cannot plan: no odometry received.")
+            self.get_logger().warning("Cannot plan: no localization pose received.")
             return
 
         start_cell = self.world_to_grid(

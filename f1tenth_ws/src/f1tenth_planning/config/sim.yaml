@@ -1,7 +1,7 @@
 occupancy_grid_planner:
   ros__parameters:
     map_topic: /map
-    odom_topic: /ego_racecar/odom
+    pose_topic: /localization/pose
     goal_topic: /planner/goal_pose
     path_topic: /planner/path
     waypoints_topic: /planner/waypoints
@@ -14,7 +14,7 @@ occupancy_grid_planner:
 
 pure_pursuit_follower:
   ros__parameters:
-    odom_topic: /ego_racecar/odom
+    pose_topic: /localization/pose
     path_topic: /planner/path
     drive_topic: /drive
     control_rate: 20.0
