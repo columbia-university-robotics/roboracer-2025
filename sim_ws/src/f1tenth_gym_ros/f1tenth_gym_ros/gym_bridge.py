@@ -136,6 +136,7 @@ class GymBridge(Node):
 
         self.declare_parameter('ego_namespace', 'ego_racecar')
         self.declare_parameter('ego_odom_topic', 'odom')
+        self.declare_parameter('localization_pose_topic', '/localization/pose')
         self.declare_parameter('ego_opp_odom_topic', 'opp_odom')
         self.declare_parameter('ego_scan_topic', 'scan')
         self.declare_parameter('ego_drive_topic', 'drive')
@@ -293,6 +294,7 @@ class GymBridge(Node):
         self.scan_range_max = self.lidar_cfg.range_max
         self.ego_namespace = self.get_parameter('ego_namespace').value
         ego_odom_topic = self.ego_namespace + '/' + self.get_parameter('ego_odom_topic').value
+        localization_pose_topic = self.get_parameter('localization_pose_topic').value
         self.scan_tf = self.lidar_cfg.base_link_to_lidar_tf
         
         if num_agents == 2:
@@ -337,6 +339,9 @@ class GymBridge(Node):
         # publishers
         self.ego_scan_pub = self.create_publisher(LaserScan, ego_scan_topic, 10)
         self.ego_odom_pub = self.create_publisher(Odometry, ego_odom_topic, 10)
+        self.localization_pose_pub = self.create_publisher(
+            PoseWithCovarianceStamped, localization_pose_topic, 10
+        )
         self.ego_drive_published = False
         if num_agents == 2:
             self.opp_scan_pub = self.create_publisher(LaserScan, opp_scan_topic, 10)
@@ -344,6 +349,10 @@ class GymBridge(Node):
             self.opp_odom_pub = self.create_publisher(Odometry, opp_odom_topic, 10)
             self.opp_ego_odom_pub = self.create_publisher(Odometry, opp_ego_odom_topic, 10)
             self.opp_drive_published = False
+
+        self.get_logger().info(
+            'Publishing standardized localization pose on %s' % localization_pose_topic
+        )
             
         if self.get_parameter('use_sim_time_bridge').value:
             self.get_logger().info('Using simulation time. Will publish /clock topic. Drive and odom will be as fast as possible.')
@@ -578,6 +587,20 @@ class GymBridge(Node):
         ego_odom.twist.twist.linear.y = self.ego_speed[1]
         ego_odom.twist.twist.angular.z = self.ego_speed[2]
         self.ego_odom_pub.publish(ego_odom)
+
+        # Ground-truth map pose for the same interface the real car uses.
+        ego_pose = PoseWithCovarianceStamped()
+        ego_pose.header.stamp = ts
+        ego_pose.header.frame_id = 'map'
+        ego_pose.pose.pose.position.x = self.ego_pose[0]
+        ego_pose.pose.pose.position.y = self.ego_pose[1]
+        ego_pose.pose.pose.orientation.x = ego_quat[0]
+        ego_pose.pose.pose.orientation.y = ego_quat[1]
+        ego_pose.pose.pose.orientation.z = ego_quat[2]
+        ego_pose.pose.pose.orientation.w = ego_quat[3]
+        for idx in (0, 7, 14, 21, 28, 35):
+            ego_pose.pose.covariance[idx] = 1e-6
+        self.localization_pose_pub.publish(ego_pose)
 
         if self.has_opp:
             opp_odom = Odometry()

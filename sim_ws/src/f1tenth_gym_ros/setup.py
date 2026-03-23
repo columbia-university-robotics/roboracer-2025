@@ -1,13 +1,20 @@
-from setuptools import setup
 import os
 from glob import glob
 
+from setuptools import find_packages, setup
+
 package_name = 'f1tenth_gym_ros'
+ros_packages = find_packages(include=[package_name, f'{package_name}.*'])
+gym_packages = find_packages(where='f1tenth_gym', include=['f1tenth_gym', 'f1tenth_gym.*'])
 
 setup(
     name=package_name,
     version='0.0.0',
-    packages=[package_name],
+    packages=ros_packages + gym_packages,
+    package_dir={
+        '': '.',
+        'f1tenth_gym': 'f1tenth_gym/f1tenth_gym',
+    },
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
