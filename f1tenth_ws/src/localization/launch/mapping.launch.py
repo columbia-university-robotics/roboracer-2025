@@ -14,7 +14,8 @@ Usage:
 """
 
 import os
-from glob import glob
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, LogInfo, IncludeLaunchDescription
 from launch.substitutions import LaunchConfiguration
@@ -23,20 +24,49 @@ from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 
-def find_map_files(context):
-    """Search for map files in common locations."""
-    search_paths = [
-        '/home/curc/Desktop/f1tenth_ws/src/f1tenth_system/localization/maps',
-        '/home/curc/Desktop/f1tenth_ws',
-    ]
-    
-    map_files = []
-    for path in search_paths:
-        if os.path.exists(path):
-            yaml_files = glob(os.path.join(path, '*.yaml'))
-            map_files.extend(yaml_files)
-    
-    return map_files
+def package_root() -> Path:
+    return Path(get_package_share_directory("localization"))
+
+
+def find_map_files() -> list[str]:
+    """Search for map files in the package's maps directory."""
+    maps_dir = package_root() / "maps"
+    if not maps_dir.exists():
+        return []
+    return sorted(str(path) for path in maps_dir.glob("*.yaml"))
+
+
+def resolve_map_file(map_file: str) -> Path:
+    """Resolve absolute or package-relative map YAML paths."""
+    candidate = Path(map_file).expanduser()
+    if candidate.is_absolute():
+        return candidate
+
+    search_roots = (
+        Path.cwd(),
+        package_root(),
+        package_root() / "maps",
+    )
+    for root in search_roots:
+        resolved = root / candidate
+        if resolved.exists():
+            return resolved
+    return candidate
+
+
+def pose_relay_node(input_topic: str) -> Node:
+    return Node(
+        package="localization",
+        executable="pose_relay.py",
+        name="localization_pose_relay",
+        output="screen",
+        parameters=[
+            {
+                "input_topic": input_topic,
+                "output_topic": "/localization/pose",
+            }
+        ],
+    )
 
 
 def generate_launch_description_from_context(context):
@@ -45,6 +75,7 @@ def generate_launch_description_from_context(context):
     map_file = LaunchConfiguration('map_file').perform(context)
     
     nodes_to_launch = []
+    share_dir = package_root()
     
     # RViz2 node (common for both modes)
     rviz_node = Node(
@@ -58,7 +89,7 @@ def generate_launch_description_from_context(context):
     
     if mode == 'mapping':
         # SLAM Toolbox for mapping
-        slam_params_file = os.path.join(get_package_share_directory('localization'), 'params', 'slam_toolbox_mapping.yaml')
+        slam_params_file = os.path.join(str(share_dir), 'params', 'slam_toolbox_mapping.yaml')
         
         slam_toolbox_dir = get_package_share_directory('slam_toolbox')
         
@@ -72,6 +103,7 @@ def generate_launch_description_from_context(context):
             }.items()
         )
         nodes_to_launch.append(slam_launch)
+        nodes_to_launch.append(pose_relay_node('/pose'))
         
         nodes_to_launch.append(LogInfo(msg='Starting SLAM Toolbox in MAPPING mode'))
 
@@ -86,7 +118,7 @@ def generate_launch_description_from_context(context):
     elif mode == 'localization':
         # Validate map file
         if not map_file or map_file == '':
-            available_maps = find_map_files(context)
+            available_maps = find_map_files()
             error_msg = 'ERROR: map_file argument is required for localization mode!\n'
             error_msg += 'Available maps found:\n'
             for m in available_maps:
@@ -94,8 +126,9 @@ def generate_launch_description_from_context(context):
             error_msg += '\nUsage: ros2 launch localization mapping.launch.py mode:=localization map_file:=<path_to_map.yaml>'
             nodes_to_launch.append(LogInfo(msg=error_msg))
             return nodes_to_launch
-        
-        if not os.path.exists(map_file):
+
+        resolved_map_file = resolve_map_file(map_file)
+        if not resolved_map_file.exists():
             nodes_to_launch.append(LogInfo(msg=f'ERROR: Map file not found: {map_file}'))
             return nodes_to_launch
         
@@ -106,7 +139,7 @@ def generate_launch_description_from_context(context):
             name='map_server',
             output='screen',
             parameters=[{
-                'yaml_filename': map_file,
+                'yaml_filename': str(resolved_map_file),
                 'use_sim_time': False
             }]
         )
@@ -123,7 +156,7 @@ def generate_launch_description_from_context(context):
         nodes_to_launch.append(map_server_bringup)
         
         amcl_params_file = os.path.join(
-            get_package_share_directory('localization'),
+            str(share_dir),
             'params',
             'amcl_config.yaml'
         )
@@ -140,6 +173,7 @@ def generate_launch_description_from_context(context):
             ]
         )
         nodes_to_launch.append(amcl_node)
+        nodes_to_launch.append(pose_relay_node('/amcl_pose'))
         
         # Lifecycle bringup for amcl using nav2_util
         amcl_bringup = Node(
@@ -151,7 +185,9 @@ def generate_launch_description_from_context(context):
         )
         nodes_to_launch.append(amcl_bringup)
         
-        nodes_to_launch.append(LogInfo(msg=f'Starting LOCALIZATION mode with map: {map_file}'))
+        nodes_to_launch.append(
+            LogInfo(msg=f'Starting LOCALIZATION mode with map: {resolved_map_file}')
+        )
     
     else:
         nodes_to_launch.append(LogInfo(msg=f'ERROR: Invalid mode "{mode}". Must be "mapping" or "localization"'))
@@ -172,7 +208,7 @@ def generate_launch_description():
     map_file_arg = DeclareLaunchArgument(
         'map_file',
         default_value='',
-        description='Absolute path to map YAML file (required for localization mode). Example: /home/curc/Desktop/f1tenth_ws/src/f1tenth_system/localization/maps/my_map.yaml'
+        description='Map YAML file for localization mode. Accepts an absolute path or a path relative to the localization package.'
     )
     
     # Use OpaqueFunction to generate nodes based on context since it defers evaluation until launch args are parsed

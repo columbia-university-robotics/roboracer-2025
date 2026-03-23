@@ -2,11 +2,11 @@
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped
 import tf2_ros
 import time
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
 
 class LocalizationTestNode(Node):
     def __init__(self):
@@ -17,6 +17,8 @@ class LocalizationTestNode(Node):
             LaserScan, '/scan', self.scan_callback, 10)
         self.odom_sub = self.create_subscription(
             Odometry, '/odom', self.odom_callback, 10)
+        self.pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped, '/localization/pose', self.pose_callback, 10)
         
         # TF listener
         self.tf_buffer = tf2_ros.Buffer()
@@ -25,6 +27,7 @@ class LocalizationTestNode(Node):
         self.get_logger().info('Localization test node started')
         self.scan_count = 0
         self.odom_count = 0
+        self.pose_count = 0
         
     def scan_callback(self, msg):
         self.scan_count += 1
@@ -37,6 +40,13 @@ class LocalizationTestNode(Node):
         self.odom_count += 1
         if self.odom_count % 10 == 0:  # Log every 10th message
             self.get_logger().info(f'Received odom message #{self.odom_count}, '
+                                 f'frame: {msg.header.frame_id}, '
+                                 f'stamp: {msg.header.stamp.sec}.{msg.header.stamp.nanosec}')
+
+    def pose_callback(self, msg):
+        self.pose_count += 1
+        if self.pose_count % 10 == 0:  # Log every 10th message
+            self.get_logger().info(f'Received pose message #{self.pose_count}, '
                                  f'frame: {msg.header.frame_id}, '
                                  f'stamp: {msg.header.stamp.sec}.{msg.header.stamp.nanosec}')
     
@@ -65,7 +75,10 @@ def main(args=None):
         # Spin for a while to collect data
         rclpy.spin_once(node, timeout_sec=5.0)
         
-        node.get_logger().info(f'Test completed. Received {node.scan_count} scan messages, {node.odom_count} odom messages')
+        node.get_logger().info(
+            f'Test completed. Received {node.scan_count} scan messages, '
+            f'{node.odom_count} odom messages, {node.pose_count} pose messages'
+        )
         
     except KeyboardInterrupt:
         pass

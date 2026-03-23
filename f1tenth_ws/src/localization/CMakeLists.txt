@@ -23,29 +23,17 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-# Install launch files
-install(DIRECTORY launch
+install(
+  DIRECTORY launch params maps
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Install params files
-install(DIRECTORY params
-  DESTINATION share/${PROJECT_NAME}
-)
-
-# Install rviz configs
-install(DIRECTORY rviz
-  DESTINATION share/${PROJECT_NAME}
-)
-
-# Install maps folder
-install(DIRECTORY maps
-  DESTINATION share/${PROJECT_NAME}
+install(
+  PROGRAMS
+    scripts/pose_relay.py
+    scripts/print_scan.py
+    scripts/test_setup.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 ament_package()
-
-install(
-  DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME}
-)
