@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    package_share = get_package_share_directory("f1tenth_planning")
+    package_share = get_package_share_directory("planning")
     default_config = os.path.join(package_share, "config", "sim.yaml")
     config_file = LaunchConfiguration("config_file")
 
@@ -20,14 +20,14 @@ def generate_launch_description():
                 description="Planner/follower parameter YAML.",
             ),
             Node(
-                package="f1tenth_planning",
+                package="planning",
                 executable="occupancy_grid_planner",
                 name="occupancy_grid_planner",
                 parameters=[config_file],
                 output="screen",
             ),
             Node(
-                package="f1tenth_planning",
+                package="planning",
                 executable="pure_pursuit_follower",
                 name="pure_pursuit_follower",
                 parameters=[config_file],

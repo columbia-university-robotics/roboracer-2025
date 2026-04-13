@@ -21,11 +21,11 @@ Today that means:
 f1tenth_ws/src/
   f1tenth_system/   # vendor, driver, bringup, teleop, and hardware stack
   localization/     # mapping and map-frame localization output
-  f1tenth_planning/ # shared planner and path follower
+  planning/         # shared planner and path follower
 
 sim_ws/src/
   f1tenth_gym_ros/  # simulator bridge and simulator-specific launch/config
-  f1tenth_planning  # symlink to ../../f1tenth_ws/src/f1tenth_planning
+  planning          # symlink to ../../f1tenth_ws/src/planning
 ```
 
 ## Package philosophy
@@ -39,7 +39,7 @@ sim_ws/src/
 
 These packages bring up the real car, publish raw sensors, and accept low-level drive commands.
 
-`localization` and `f1tenth_planning` are team-owned autonomy packages. They sit beside `f1tenth_system` because they are consumers of the hardware stack, not part of the hardware stack itself.
+`localization` and `planning` are team-owned autonomy packages. They sit beside `f1tenth_system` because they are consumers of the hardware stack, not part of the hardware stack itself.
 
 ## Standard autonomy interfaces
 
@@ -55,7 +55,7 @@ Both real and simulated flows publish that same topic:
 - simulation:
   - `f1tenth_gym_ros` publishes the exact ground-truth map pose directly to `/localization/pose`
 
-`f1tenth_planning` subscribes to `/localization/pose` in both workspaces, so planning code does not need separate real/sim pose topic names anymore.
+`planning` subscribes to `/localization/pose` in both workspaces, so planning code does not need separate real/sim pose topic names anymore.
 
 Lower-level motion topics still exist and are intentionally separate from the autonomy pose contract:
 
@@ -121,7 +121,7 @@ ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 Run planning in either workspace:
 
 ```bash
-ros2 launch f1tenth_planning planning.launch.py
+ros2 launch planning planning.launch.py
 ```
 
 The planner package includes both `config/real.yaml` and `config/sim.yaml`. Both consume `/localization/pose`, so the same launch flow works in either workspace unless you explicitly override `config_file`.

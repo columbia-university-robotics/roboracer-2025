@@ -4,7 +4,7 @@ import os
 from setuptools import setup
 
 
-package_name = "f1tenth_planning"
+package_name = "planning"
 
 
 setup(
@@ -26,8 +26,8 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "occupancy_grid_planner = f1tenth_planning.occupancy_grid_planner:main",
-            "pure_pursuit_follower = f1tenth_planning.pure_pursuit_follower:main",
+            "occupancy_grid_planner = planning.occupancy_grid_planner:main",
+            "pure_pursuit_follower = planning.pure_pursuit_follower:main",
         ],
     },
 )
