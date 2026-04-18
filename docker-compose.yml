@@ -1,0 +1,18 @@
+services:
+  ubuntu:
+    container_name: roboracer-ros2-humble
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/arm64
+    init: true
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    ports:
+      - "8081:8081"
+      - "8765:8765"
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    command: tail -f /dev/null
