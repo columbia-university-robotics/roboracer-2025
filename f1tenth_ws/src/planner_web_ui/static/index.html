@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RoboRacer Planner UI</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="sidebar">
+        <h1>Planner UI</h1>
+        <p class="hint">
+          Click anywhere on the map to publish a goal on
+          <code>/planner/goal_pose</code>. The goal yaw points from the current
+          robot pose toward the clicked point.
+        </p>
+        <dl class="status-grid">
+          <div>
+            <dt>Status</dt>
+            <dd id="status">Waiting for ROS data...</dd>
+          </div>
+          <div>
+            <dt>Pose</dt>
+            <dd id="pose">-</dd>
+          </div>
+          <div>
+            <dt>Goal</dt>
+            <dd id="goal">-</dd>
+          </div>
+          <div>
+            <dt>Path</dt>
+            <dd id="path">-</dd>
+          </div>
+          <div>
+            <dt>Cursor</dt>
+            <dd id="cursor">-</dd>
+          </div>
+        </dl>
+      </section>
+      <section class="viewer">
+        <div class="canvas-shell">
+          <canvas id="map-canvas" aria-label="Planner map"></canvas>
+          <div id="overlay-message" class="overlay-message">
+            Waiting for <code>/map</code>...
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
