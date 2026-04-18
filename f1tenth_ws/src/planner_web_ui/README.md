@@ -15,3 +15,5 @@ It serves a small HTTP app that:
 - `ros2 launch planner_web_ui real_pathplanning.launch.py map_file:=/path/to/map.yaml`
 
 By default the UI is served on `http://localhost:8081`.
+
+The repo-level wrapper scripts `scripts/pathplanning_sim.sh` and `scripts/pathplanning_real.sh` auto-detect native ROS versus Docker so the same command can be used on a Jetson or in the project container.

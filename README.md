@@ -142,9 +142,11 @@ Run the same lightweight UI against the real-car localization/planning stack:
 
 Both scripts:
 
-- start the persistent Docker ROS container if needed
+- auto-detect whether to run natively or in the Docker ROS container
 - optionally rebuild the relevant workspace
 - launch planning plus the browser UI on [http://localhost:8081](http://localhost:8081)
 - use the same click-to-goal workflow by publishing to `/planner/goal_pose`
 
-The real-car script assumes the low-level hardware stack is already running. The sim script disables Foxglove by default for a lighter workflow, but the regular `gym_bridge_launch.py` still supports Foxglove and now accepts `map_path:=...` plus `start_foxglove_bridge:=false` when you want to customize it directly.
+When native ROS 2 Humble is available, the scripts run directly on the host. Otherwise they fall back to the `ubuntu` Docker service. You can override the choice with `--runtime native` or `--runtime docker`.
+
+The real-car script assumes the low-level hardware stack is already running. The sim script reuses or bootstraps `sim_ws/.venv` before launch so the upstream `f1tenth_gym` Python dependencies are present in both native and Docker runs. The regular `gym_bridge_launch.py` still supports Foxglove and now accepts `map_path:=...` plus `start_foxglove_bridge:=false` when you want to customize it directly.
