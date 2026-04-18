@@ -22,10 +22,12 @@ f1tenth_ws/src/
   f1tenth_system/   # vendor, driver, bringup, teleop, and hardware stack
   localization/     # mapping and map-frame localization output
   planning/         # shared planner and path follower
+  planner_web_ui/   # shared lightweight browser UI for planning
 
 sim_ws/src/
   f1tenth_gym_ros/  # simulator bridge and simulator-specific launch/config
   planning          # symlink to ../../f1tenth_ws/src/planning
+  planner_web_ui    # symlink to ../../f1tenth_ws/src/planner_web_ui
 ```
 
 ## Package philosophy
@@ -39,7 +41,7 @@ sim_ws/src/
 
 These packages bring up the real car, publish raw sensors, and accept low-level drive commands.
 
-`localization` and `planning` are team-owned autonomy packages. They sit beside `f1tenth_system` because they are consumers of the hardware stack, not part of the hardware stack itself.
+`localization`, `planning`, and `planner_web_ui` are team-owned autonomy packages. They sit beside `f1tenth_system` because they are consumers of the hardware stack, not part of the hardware stack itself.
 
 ## Standard autonomy interfaces
 
@@ -125,3 +127,24 @@ ros2 launch planning planning.launch.py
 ```
 
 The planner package includes both `config/real.yaml` and `config/sim.yaml`. Both consume `/localization/pose`, so the same launch flow works in either workspace unless you explicitly override `config_file`.
+
+Run lightweight map-based pathplanning in sim with the browser UI instead of Foxglove:
+
+```bash
+./scripts/pathplanning_sim.sh --map Spielberg
+```
+
+Run the same lightweight UI against the real-car localization/planning stack:
+
+```bash
+./scripts/pathplanning_real.sh --map f1tenth_ws/src/localization/maps/map_1761949489.yaml
+```
+
+Both scripts:
+
+- start the persistent Docker ROS container if needed
+- optionally rebuild the relevant workspace
+- launch planning plus the browser UI on [http://localhost:8081](http://localhost:8081)
+- use the same click-to-goal workflow by publishing to `/planner/goal_pose`
+
+The real-car script assumes the low-level hardware stack is already running. The sim script disables Foxglove by default for a lighter workflow, but the regular `gym_bridge_launch.py` still supports Foxglove and now accepts `map_path:=...` plus `start_foxglove_bridge:=false` when you want to customize it directly.
