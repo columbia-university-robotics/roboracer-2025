@@ -25,8 +25,7 @@ import pathlib
 import yaml
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, SetLaunchConfiguration
-from launch.conditions import IfCondition, LaunchConfigurationEquals
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
@@ -61,40 +60,48 @@ def _resolve_map_yaml_path(map_path: str, package_share: str) -> pathlib.Path:
     except Exception:
         return _resolve_yaml_path(pathlib.Path(package_share) / 'maps' / map_path)
 
-def generate_launch_description():
-    ld = LaunchDescription()
+
+def _bool_arg(value: str) -> bool:
+    return value.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def launch_setup(context):
     package_share = get_package_share_directory('f1tenth_gym_ros')
     config = os.path.join(package_share, 'config', 'sim.yaml')
     with open(config, 'r') as config_file:
         config_dict = yaml.safe_load(config_file)
     has_opp = config_dict['bridge']['ros__parameters']['num_agent'] > 1
-    teleop = config_dict['bridge']['ros__parameters']['kb_teleop']
     use_sim_time = config_dict['bridge']['ros__parameters']['use_sim_time']
-    foxglove_config = config_dict.get('foxglove', {})
-    if 'ros__parameters' in foxglove_config:
-        foxglove_config = foxglove_config['ros__parameters']
-    open_foxglove_default = str(foxglove_config.get('open_foxglove', True)).lower()
-    foxglove_target_default = str(foxglove_config.get('target', 'browser')).lower()
-    if foxglove_target_default not in ('browser', 'studio'):
+
+    map_path = LaunchConfiguration('map_path').perform(context)
+    foxglove_host = LaunchConfiguration('foxglove_host').perform(context)
+    foxglove_port = LaunchConfiguration('foxglove_port').perform(context)
+    foxglove_app_url = LaunchConfiguration('foxglove_app_url').perform(context)
+    foxglove_layout = LaunchConfiguration('foxglove_layout').perform(context)
+    foxglove_target = LaunchConfiguration('foxglove_target').perform(context).lower()
+    open_foxglove = _bool_arg(LaunchConfiguration('open_foxglove').perform(context))
+    start_foxglove_bridge = _bool_arg(
+        LaunchConfiguration('start_foxglove_bridge').perform(context)
+    )
+    if foxglove_target not in ('browser', 'studio'):
         raise ValueError("config/foxglove/target must be either 'browser' or 'studio'.")
+
+    foxglove_open_url = (
+        f'foxglove://open?ds=foxglove-websocket&ds.url=ws://{foxglove_host}:{foxglove_port}'
+        if foxglove_target == 'studio'
+        else f'{foxglove_app_url}/?ds=foxglove-websocket&ds.url=ws://{foxglove_host}:{foxglove_port}'
+    )
 
     bridge_node = Node(
         package='f1tenth_gym_ros',
         executable='gym_bridge',
         name='bridge',
         parameters=[config, {
+            'map_path': map_path,
             'use_sim_time': False,  # Always use real time for the bridge node
             'use_sim_time_bridge': use_sim_time, # Whether to internally use and publish sim time
             }], 
     )
-    foxglove_host = LaunchConfiguration('foxglove_host')
-    foxglove_port = LaunchConfiguration('foxglove_port')
-    foxglove_app_url = LaunchConfiguration('foxglove_app_url')
-    open_foxglove = LaunchConfiguration('open_foxglove')
-    foxglove_target = LaunchConfiguration('foxglove_target')
-    foxglove_open_url = LaunchConfiguration('foxglove_open_url')
-    foxglove_ws_url_parts = ['ws://', foxglove_host, ':', foxglove_port]
-    foxglove_layout = LaunchConfiguration('foxglove_layout')
 
     foxglove_bridge_node = Node(
         package='foxglove_bridge',
@@ -103,18 +110,8 @@ def generate_launch_description():
         parameters=[{'port': foxglove_port}],
         output='screen',
     )
-    foxglove_open = ExecuteProcess(
-        cmd=['xdg-open', foxglove_open_url],
-        condition=IfCondition(open_foxglove),
-        output='screen',
-    )
-    foxglove_log = LogInfo(msg=['\033[34mFoxglove app: ', foxglove_app_url, '\033[0m'])
-    foxglove_ws_log = LogInfo(msg=['\033[34mFoxglove WebSocket: '] + foxglove_ws_url_parts + ['\033[0m'])
-    foxglove_target_log = LogInfo(msg=['\033[34mFoxglove target: ', foxglove_target, '\033[0m'])
-    foxglove_layout_log = LogInfo(msg=['\033[34mFoxglove layout: ', foxglove_layout, '\033[0m'])
 
     # Create custom yaml file for map server by copying the original yaml file and scaling the resolution.
-    map_path = config_dict['bridge']['ros__parameters']['map_path']
     map_yaml_path = _resolve_map_yaml_path(map_path, package_share)
     with open(map_yaml_path, 'r') as file:
         map_yaml = yaml.safe_load(file)
@@ -213,73 +210,84 @@ def generate_launch_description():
         remappings=[('/robot_description', 'opp_robot_description')]
     )
 
-    # finalize
-    ld.add_action(
-        DeclareLaunchArgument(
-            'foxglove_host',
-            default_value='localhost',
-            description='Host for foxglove_bridge websocket server.',
-        )
-    )
-    ld.add_action(
-        DeclareLaunchArgument(
-            'foxglove_port',
-            default_value='8765',
-            description='Port for foxglove_bridge websocket server.',
-        )
-    )
-    ld.add_action(
-        DeclareLaunchArgument(
-            'foxglove_app_url',
-            default_value='https://app.foxglove.dev',
-            description='Foxglove app URL to open in a browser.',
-        )
-    )
-    ld.add_action(
-        DeclareLaunchArgument(
-            'foxglove_layout',
-            default_value=os.path.join(package_share, 'config', 'foxglove', 'gym_bridge_foxglove.json'),
-            description='Path to Foxglove layout JSON.',
-        )
-    )
-    ld.add_action(
-        DeclareLaunchArgument(
-            'open_foxglove',
-            default_value=open_foxglove_default,
-            description='Whether to open Foxglove automatically.',
-        )
-    )
-    ld.add_action(
-        DeclareLaunchArgument(
-            'foxglove_target',
-            default_value=foxglove_target_default,
-            description="Where to open Foxglove: 'browser' or 'studio'.",
-        )
-    )
-    ld.add_action(
-        SetLaunchConfiguration(
-            'foxglove_open_url',
-            [foxglove_app_url, '/?ds=foxglove-websocket&ds.url=ws://', foxglove_host, ':', foxglove_port],
-        )
-    )
-    ld.add_action(
-        SetLaunchConfiguration(
-            'foxglove_open_url',
-            ['foxglove://open?ds=foxglove-websocket&ds.url=ws://', foxglove_host, ':', foxglove_port],
-            condition=LaunchConfigurationEquals('foxglove_target', 'studio'),
-        )
-    )
-    ld.add_action(foxglove_bridge_node)
-    ld.add_action(foxglove_open)
-    ld.add_action(bridge_node)
-    ld.add_action(nav_lifecycle_node)
-    ld.add_action(map_server_node)
-    ld.add_action(ego_robot_publisher)
+    actions = [bridge_node, nav_lifecycle_node, map_server_node, ego_robot_publisher]
     if has_opp:
-        ld.add_action(opp_robot_publisher)
-    ld.add_action(foxglove_log)
-    ld.add_action(foxglove_ws_log)
-    ld.add_action(foxglove_target_log)
-    ld.add_action(foxglove_layout_log)
+        actions.append(opp_robot_publisher)
 
-    return ld
+    if start_foxglove_bridge:
+        actions.insert(0, foxglove_bridge_node)
+        if open_foxglove:
+            actions.insert(1, ExecuteProcess(cmd=['xdg-open', foxglove_open_url], output='screen'))
+        actions.extend(
+            [
+                LogInfo(msg=f'\033[34mFoxglove app: {foxglove_app_url}\033[0m'),
+                LogInfo(
+                    msg=f'\033[34mFoxglove WebSocket: ws://{foxglove_host}:{foxglove_port}\033[0m'
+                ),
+                LogInfo(msg=f'\033[34mFoxglove target: {foxglove_target}\033[0m'),
+                LogInfo(msg=f'\033[34mFoxglove layout: {foxglove_layout}\033[0m'),
+            ]
+        )
+
+    return actions
+
+
+def generate_launch_description():
+    package_share = get_package_share_directory('f1tenth_gym_ros')
+    config = os.path.join(package_share, 'config', 'sim.yaml')
+    with open(config, 'r') as config_file:
+        config_dict = yaml.safe_load(config_file)
+    foxglove_config = config_dict.get('foxglove', {})
+    if 'ros__parameters' in foxglove_config:
+        foxglove_config = foxglove_config['ros__parameters']
+    open_foxglove_default = str(foxglove_config.get('open_foxglove', True)).lower()
+    foxglove_target_default = str(foxglove_config.get('target', 'browser')).lower()
+    map_path_default = str(config_dict['bridge']['ros__parameters']['map_path'])
+
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument(
+                'map_path',
+                default_value=map_path_default,
+                description='Map path or built-in track name for the simulator.',
+            ),
+            DeclareLaunchArgument(
+                'foxglove_host',
+                default_value='localhost',
+                description='Host for foxglove_bridge websocket server.',
+            ),
+            DeclareLaunchArgument(
+                'foxglove_port',
+                default_value='8765',
+                description='Port for foxglove_bridge websocket server.',
+            ),
+            DeclareLaunchArgument(
+                'foxglove_app_url',
+                default_value='https://app.foxglove.dev',
+                description='Foxglove app URL to open in a browser.',
+            ),
+            DeclareLaunchArgument(
+                'foxglove_layout',
+                default_value=os.path.join(
+                    package_share, 'config', 'foxglove', 'gym_bridge_foxglove.json'
+                ),
+                description='Path to Foxglove layout JSON.',
+            ),
+            DeclareLaunchArgument(
+                'open_foxglove',
+                default_value=open_foxglove_default,
+                description='Whether to open Foxglove automatically.',
+            ),
+            DeclareLaunchArgument(
+                'foxglove_target',
+                default_value=foxglove_target_default,
+                description="Where to open Foxglove: 'browser' or 'studio'.",
+            ),
+            DeclareLaunchArgument(
+                'start_foxglove_bridge',
+                default_value='true',
+                description='Whether to start the foxglove_bridge node.',
+            ),
+            OpaqueFunction(function=launch_setup),
+        ]
+    )

@@ -73,19 +73,25 @@ def generate_launch_description_from_context(context):
     """Generate launch description based on mode."""
     mode = LaunchConfiguration('mode').perform(context)
     map_file = LaunchConfiguration('map_file').perform(context)
+    enable_rviz = LaunchConfiguration('enable_rviz').perform(context).lower() in (
+        '1',
+        'true',
+        'yes',
+        'on',
+    )
     
     nodes_to_launch = []
     share_dir = package_root()
     
-    # RViz2 node (common for both modes)
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
-        output='screen',
-        arguments=['-d', '/opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz']
-    )
-    nodes_to_launch.append(rviz_node)
+    if enable_rviz:
+        rviz_node = Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', '/opt/ros/humble/share/nav2_bringup/rviz/nav2_default_view.rviz']
+        )
+        nodes_to_launch.append(rviz_node)
     
     if mode == 'mapping':
         # SLAM Toolbox for mapping
@@ -145,13 +151,17 @@ def generate_launch_description_from_context(context):
         )
         nodes_to_launch.append(map_server_node)
         
-        # Lifecycle bringup for map_server using nav2_util
+        # Lifecycle bringup for map_server using nav2_lifecycle_manager
         map_server_bringup = Node(
-            package='nav2_util',
-            executable='lifecycle_bringup',
-            name='lifecycle_bringup_map_server',
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_map_server',
             output='screen',
-            arguments=['map_server']
+            parameters=[
+                { 'use_sim_time': False },
+                { 'autostart': True },
+                { 'node_names': ['map_server'] },
+            ]
         )
         nodes_to_launch.append(map_server_bringup)
         
@@ -175,13 +185,17 @@ def generate_launch_description_from_context(context):
         nodes_to_launch.append(amcl_node)
         nodes_to_launch.append(pose_relay_node('/amcl_pose'))
         
-        # Lifecycle bringup for amcl using nav2_util
+        # Lifecycle bringup for amcl using nav2_lifecycle_manager
         amcl_bringup = Node(
-            package='nav2_util',
-            executable='lifecycle_bringup',
-            name='lifecycle_bringup_amcl',
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_amcl',
             output='screen',
-            arguments=['amcl']
+            parameters=[
+                { 'use_sim_time': False },
+                { 'autostart': True },
+                { 'node_names': ['amcl'] },
+            ]
         )
         nodes_to_launch.append(amcl_bringup)
         
@@ -210,6 +224,11 @@ def generate_launch_description():
         default_value='',
         description='Map YAML file for localization mode. Accepts an absolute path or a path relative to the localization package.'
     )
+    enable_rviz_arg = DeclareLaunchArgument(
+        'enable_rviz',
+        default_value='true',
+        description='Whether to launch RViz alongside mapping/localization.'
+    )
     
     # Use OpaqueFunction to generate nodes based on context since it defers evaluation until launch args are parsed
     launch_nodes = OpaqueFunction(function=generate_launch_description_from_context)
@@ -217,5 +236,6 @@ def generate_launch_description():
     return LaunchDescription([
         mode_arg,
         map_file_arg,
+        enable_rviz_arg,
         launch_nodes
     ])
