@@ -19,10 +19,18 @@ native_ros_available() {
 }
 
 docker_runtime_available() {
+  [[ -f "$ROBORACER_ROOT/docker-compose.yml" ]] &&
   command -v docker >/dev/null 2>&1 && (
     cd "$ROBORACER_ROOT"
-    docker compose config --services >/dev/null 2>&1
+    docker compose version >/dev/null 2>&1
   )
+}
+
+require_runtime_selection() {
+  if [[ -z "$ROBORACER_RUNTIME_MODE" ]]; then
+    echo "Runtime not selected. Call select_runtime before using runtime-aware helpers." >&2
+    exit 1
+  fi
 }
 
 select_runtime() {
@@ -71,6 +79,8 @@ quote_for_bash() {
 }
 
 runtime_path() {
+  require_runtime_selection
+
   local candidate="$1"
   if [[ "$candidate" != /* ]]; then
     local repo_relative_candidate="$ROBORACER_ROOT/$candidate"
@@ -86,6 +96,8 @@ runtime_path() {
 }
 
 workspace_root_for_runtime() {
+  require_runtime_selection
+
   local workspace_name="$1"
   if [[ "$ROBORACER_RUNTIME_MODE" == "docker" ]]; then
     printf '/workspace/%s' "$workspace_name"
@@ -117,6 +129,8 @@ maybe_open_browser() {
 }
 
 run_launch_command() {
+  require_runtime_selection
+
   local workspace_root="$1"
   local prepare_command="$2"
   local build_command="$3"
@@ -124,8 +138,7 @@ run_launch_command() {
   local do_build="$5"
 
   local command="set -eo pipefail"
-  command+=" && set +u"
-  command+=" && source /opt/ros/humble/setup.bash"
+  command+=" && set +u && source /opt/ros/humble/setup.bash && set -u"
   command+=" && cd $(quote_for_bash "$workspace_root")"
   if [[ -n "$prepare_command" ]]; then
     command+=" && ${prepare_command}"
@@ -133,8 +146,7 @@ run_launch_command() {
   if [[ "$do_build" == "1" ]]; then
     command+=" && ${build_command}"
   fi
-  command+=" && source install/setup.bash"
-  command+=" && set -u"
+  command+=" && set +u && source install/setup.bash && set -u"
   command+=" && ${launch_command}"
 
   (

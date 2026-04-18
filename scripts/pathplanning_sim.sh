@@ -72,8 +72,12 @@ maybe_open_browser "$OPEN_BROWSER"
 SIM_WORKSPACE_ROOT="$(workspace_root_for_runtime "sim_ws")"
 SIM_VENV_ROOT="${SIM_WORKSPACE_ROOT}/.venv"
 SIM_GYM_ROOT="${SIM_WORKSPACE_ROOT}/src/f1tenth_gym_ros/f1tenth_gym"
+SIM_VENV_ACTIVATE_COMMAND="source $(quote_for_bash "$SIM_VENV_ROOT/bin/activate")"
+SIM_GYM_INSTALL_COMMAND="python -m pip install -U pip >/dev/null && python -m pip install -e $(quote_for_bash "$SIM_GYM_ROOT")"
 
-SIM_PREPARE_COMMAND="if [[ ! -d $(quote_for_bash "$SIM_VENV_ROOT") ]]; then python3 -m venv --system-site-packages $(quote_for_bash "$SIM_VENV_ROOT"); fi && source $(quote_for_bash "$SIM_VENV_ROOT/bin/activate") && python -m pip install -U pip >/dev/null && (python -c 'import gymnasium, numba, PIL, OpenGL, cv2, yamldataclassconfig, pandas, requests' >/dev/null 2>&1 || python -m pip install -e $(quote_for_bash "$SIM_GYM_ROOT"))"
+SIM_PREPARE_COMMAND="if [[ ! -d $(quote_for_bash "$SIM_VENV_ROOT") ]]; then python3 -m venv --system-site-packages $(quote_for_bash "$SIM_VENV_ROOT"); fi"
+SIM_PREPARE_COMMAND+=" && ${SIM_VENV_ACTIVATE_COMMAND}"
+SIM_PREPARE_COMMAND+=" && if ! python -m pip show f1tenth_gym >/dev/null 2>&1; then ${SIM_GYM_INSTALL_COMMAND}; fi"
 BUILD_COMMAND="colcon build --packages-select f1tenth_gym_ros planning planner_web_ui"
 LAUNCH_COMMAND="ros2 launch planner_web_ui sim_pathplanning.launch.py map:=$(quote_for_bash "$(runtime_path "$MAP")") web_port:=8081"
 
