@@ -124,7 +124,7 @@ class F110Env(gym.Env):
         raise TypeError("map must be a Track instance or a path/name string")
 
     def _initialize_components(self) -> None:
-        if self.renderer is not None:
+        if self.render_enabled and self.renderer is not None:
             self.renderer.close()
         self.renderer = None
         self.render_spec = None
@@ -147,11 +147,40 @@ class F110Env(gym.Env):
 
         self.agent_ids = [f"agent_{i}" for i in range(self.num_agents)]
 
-        self.agents_prev_s = [None] * self.num_agents
+        if self.loop_counter_mode is LoopCounterMode.FRENET_BASED:
+            self.cumulative_s = np.zeros((self.num_agents,))
+            self.agents_prev_s = np.zeros((self.num_agents,))
+        elif self.loop_counter_mode is LoopCounterMode.WINDING_ANGLE:
+            self.cumulative_angle = np.zeros((self.num_agents,))
+            self.agents_prev_angle = np.zeros((self.num_agents, 2))
         self.lap_times = np.zeros((self.num_agents,))
         self.lap_times_finish = np.zeros((self.num_agents,))
         self.lap_counts = np.zeros((self.num_agents,))
         self.sim_time = 0.0
+
+        if self.loop_counter_mode is LoopCounterMode.WINDING_ANGLE and self.track is not None:
+            cl = self.track.centerline
+            # Polygon area centroid (Shoelace formula) — true centroid of the enclosed area,
+            # guaranteed inside for convex tracks and robust for typical racing circuits.
+            xs = np.asarray(cl.xs, dtype=np.float64)
+            ys = np.asarray(cl.ys, dtype=np.float64)
+            x = np.append(xs, xs[0])
+            y = np.append(ys, ys[0])
+            cross = x[:-1] * y[1:] - x[1:] * y[:-1]
+            area = 0.5 * np.sum(cross)
+            cx = np.sum((x[:-1] + x[1:]) * cross) / (6.0 * area)
+            cy = np.sum((y[:-1] + y[1:]) * cross) / (6.0 * area)
+            self._winding_point = np.array([float(cx), float(cy)])
+            # Determine CW vs CCW from the first two raceline points relative to winding point.
+            rl = self.track.raceline
+            fp = np.array([rl.xs[0], rl.ys[0]]) - self._winding_point
+            sp = np.array([rl.xs[1], rl.ys[1]]) - self._winding_point
+            self._winding_direction = float(np.sign(
+                np.arctan2(fp[0] * sp[1] - fp[1] * sp[0], fp.dot(sp))
+            ))
+        else:
+            self._winding_point = None
+            self._winding_direction = 1.0
 
         obs_kwargs: dict[str, Any] = {"type": self.observation_cfg.type}
         if self.observation_cfg.features is not None:
@@ -209,17 +238,42 @@ class F110Env(gym.Env):
             s_frame_max = self.track.centerline.spline.s_frame_max
             for ind in range(self.num_agents):
                 current_s = float(self.sim.state.frenet[ind, 0])
-                if self.agents_prev_s[ind] is None:
-                    self.agents_prev_s[ind] = current_s
-                    continue
-                if (
-                    self.agents_prev_s[ind] - current_s > s_frame_max * 0.85
-                    and self.sim_time > self.timestep
-                ):
-                    self.lap_counts[ind] += 1
+                delta_s = current_s - self.agents_prev_s[ind]
+                # Correct for wraparound: a forward crossing makes delta_s
+                # sharply negative; a backward crossing makes it sharply positive.
+                if delta_s < -0.5 * s_frame_max:
+                    delta_s += s_frame_max
+                elif delta_s > 0.5 * s_frame_max:
+                    delta_s -= s_frame_max
+                self.cumulative_s[ind] += delta_s
+                self.agents_prev_s[ind] = current_s
+                new_lap_count = int(self.cumulative_s[ind] / s_frame_max)
+                if new_lap_count > self.lap_counts[ind] and self.sim_time > self.timestep:
+                    self.lap_counts[ind] = new_lap_count
                     self.lap_times[ind] = self.sim_time - self.lap_times_finish[ind]
                     self.lap_times_finish[ind] = self.sim_time
-                self.agents_prev_s[ind] = current_s
+
+        elif (
+            self.loop_counter_mode is LoopCounterMode.WINDING_ANGLE
+            and self._winding_point is not None
+        ):
+            wp = self._winding_point
+            wd = self._winding_direction
+            for ind in range(self.num_agents):
+                pose = self.sim.state.poses[ind]
+                curr_vec = np.array([pose[0] - wp[0], pose[1] - wp[1]])
+                prev_vec = self.agents_prev_angle[ind]  # stored as 2-vector
+                # Signed angle from prev to curr, scaled by racing direction
+                cross = float(prev_vec[0] * curr_vec[1] - prev_vec[1] * curr_vec[0])
+                dot = float(prev_vec.dot(curr_vec))
+                delta_angle = np.arctan2(cross, dot) * wd
+                self.cumulative_angle[ind] += delta_angle
+                self.agents_prev_angle[ind] = curr_vec
+                new_lap_count = int(self.cumulative_angle[ind] / (2.0 * np.pi))
+                if new_lap_count > self.lap_counts[ind] and self.sim_time > self.timestep:
+                    self.lap_counts[ind] = new_lap_count
+                    self.lap_times[ind] = self.sim_time - self.lap_times_finish[ind]
+                    self.lap_times_finish[ind] = self.sim_time
 
         done = bool(self.sim.collisions[self.ego_idx])
         if self.max_laps is not None:
@@ -248,12 +302,10 @@ class F110Env(gym.Env):
 
         # observation
         obs = self.observation_type.observe()
-        if self.render_enabled:
+        if self.render_enabled and self.renderer is not None:
             if self.observation_cfg.type is ObservationType.DIRECT:
-                # for direct observation, also update the render_obs
                 self.render_obs = copy.deepcopy(obs)
             else:
-                # for other observation types, update the render_obs
                 self.render_obs = copy.deepcopy(self.render_obs_type.observe())
 
         # times
@@ -282,7 +334,12 @@ class F110Env(gym.Env):
         super().reset(seed=seed)
 
         self.sim_time = 0.0
-        self.agents_prev_s = [None] * self.num_agents
+        if self.loop_counter_mode is LoopCounterMode.FRENET_BASED:
+            self.cumulative_s.fill(0.0)
+            self.agents_prev_s.fill(0.0)
+        elif self.loop_counter_mode is LoopCounterMode.WINDING_ANGLE:
+            self.cumulative_angle.fill(0.0)
+            self.agents_prev_angle.fill(0.0)
         self.lap_counts.fill(0.0)
         self.lap_times.fill(0.0)
         self.lap_times_finish.fill(0.0)
@@ -312,25 +369,17 @@ class F110Env(gym.Env):
 
         self.sim.reset(poses, option=option)
 
-        sim_poses = self.sim.state.poses
-        self.start_xs = sim_poses[:, 0]
-        self.start_ys = sim_poses[:, 1]
-        self.start_thetas = sim_poses[:, 2]
-        self.start_rot = np.array(
-            [
-                [
-                    np.cos(-self.start_thetas[self.ego_idx]),
-                    -np.sin(-self.start_thetas[self.ego_idx]),
-                ],
-                [
-                    np.sin(-self.start_thetas[self.ego_idx]),
-                    np.cos(-self.start_thetas[self.ego_idx]),
-                ],
-            ]
-        )
+        if (
+            self.loop_counter_mode is LoopCounterMode.WINDING_ANGLE
+            and self._winding_point is not None
+        ):
+            wp = self._winding_point
+            for ind in range(self.num_agents):
+                pose = self.sim.state.poses[ind]
+                self.agents_prev_angle[ind] = np.array([pose[0] - wp[0], pose[1] - wp[1]])
 
         obs = self.observation_type.observe()
-        if self.render_enabled:
+        if self.render_enabled and self.renderer is not None:
             if self.observation_cfg.type is ObservationType.DIRECT:
                 self.render_obs = copy.deepcopy(obs)
             else:
@@ -424,6 +473,6 @@ class F110Env(gym.Env):
         """
         Ensure renderer is closed upon deletion
         """
-        if self.renderer is not None:
+        if self.render_enabled and self.renderer is not None:
             self.renderer.close()
         super().close()

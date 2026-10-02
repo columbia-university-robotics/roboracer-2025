@@ -430,7 +430,7 @@ class Track:
         half_width : float
             half width of the track
         """
-        raceline_filepath = outdir / f"{self.spec.name}_raceline.csv"
+        raceline_filepath = outdir / f"{self.spec.name}_centerline.csv"
         with open(raceline_filepath, "w") as raceline_csv:
             raceline_csv.write("# " + str(uuid.uuid4()) + "\n") # same as TUM opt
             raceline_csv.write("# x_m, y_m, w_tr_right_m, w_tr_left_m\n")
@@ -482,17 +482,14 @@ class Track:
         line = self.raceline if use_raceline else self.centerline
         if s_guess is None:
             s_guess = self.s_guess
-        # use_s_guess = False
-        
+
         if use_s_guess and s_guess is not None:
             s_inds = line.spline.find_segment_for_s(s_guess)
-            extend_length = int(self.frenet_search_range / 2 / line.spline.s_interval)  # extend search range
-            s_inds = np.arange(s_inds - extend_length, s_inds + extend_length) % (len(line.spline.s)-1) # search around the guess
+            extend_length = int(self.frenet_search_range / 2 / line.spline.s_interval)
+            s_inds = np.arange(s_inds - extend_length, s_inds + extend_length) % (len(line.spline.s)-1)
         else:
             s_inds = None
-        # print(max(line.spline.s[s_inds]), min(line.spline.s[s_inds]))
-        s, ey = line.spline.calc_arclength(x, y, s_inds) # inaccurate, but much faster
-        # s, ey = line.spline.calc_arclength(x, y, s_guess)
+        s, ey = line.spline.calc_arclength(x, y, s_inds)
         # Wrap around
         s = s % line.spline.s[-1]
         self.s_guess = s
