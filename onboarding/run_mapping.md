@@ -1,12 +1,53 @@
-# Run mapping on the robot
+# Drive and build a live map
 
-Build a new map from raw `/scan` using SLAM Toolbox and view it in Foxglove.
+This guide starts the car, connects a PS4 controller, runs SLAM Toolbox, and displays the live map in Foxglove.
 Use the current robot IP from the gist linked in [SSH access](ssh-access.md).
-Stop any existing AMCL/localization launch and standalone LiDAR driver before starting.
 
-## 1. Start the hardware stack
+## 1. Connect the PS4 controller to the robot
 
-In robot SSH terminal 0:
+Pair the controller to the robot's Bluetooth adapter, not to your laptop.
+In an SSH terminal on the robot, run:
+
+```bash
+bluetoothctl
+```
+
+At the Bluetooth prompt, enter:
+
+```text
+power on
+agent on
+default-agent
+scan on
+```
+
+Hold **SHARE + PS** until the controller light flashes rapidly.
+When `Wireless Controller` appears, note its MAC address, then run:
+
+```text
+pair CONTROLLER_MAC
+trust CONTROLLER_MAC
+connect CONTROLLER_MAC
+scan off
+quit
+```
+
+Replace `CONTROLLER_MAC` with the address shown by the scan.
+If pairing says `AlreadyExists`, run `trust` and `connect` for that address instead.
+Verify the connection and Linux joystick device:
+
+```bash
+bluetoothctl info CONTROLLER_MAC
+ls -l /dev/input/js*
+```
+
+The Bluetooth info should say `Connected: yes`, and `/dev/input/js0` should exist.
+If needed, verify Linux receives stick/button changes with `sudo jstest /dev/input/js0` and stop it with Ctrl+C.
+
+## 2. Start the hardware bringup once
+
+Do not run a second bringup alongside an existing one; both may try to use the VESC.
+Stop any old bringup with Ctrl+C, then use robot SSH terminal 0:
 
 ```bash
 cd ~/Desktop/f1tenth_ws
@@ -15,32 +56,43 @@ source install/setup.bash
 ros2 launch f1tenth_stack bringup_launch.py
 ```
 
-Leave it running; do not start a second bringup instance.
+Leave it running.
+Confirm ROS sees the controller from another sourced robot terminal:
 
-## 2. Initialize odometry
+```bash
+ros2 run joy joy_enumerate_devices
+ros2 topic echo /joy
+```
 
-Without a controller, the odometry node may wait indefinitely for its first steering command.
+Move a stick and press buttons; `/joy` messages should change.
+Stop the echo with Ctrl+C.
+On this car, the launch-started joystick node did not publish even though Linux could read the controller.
+Running `ros2 run joy joy_node --ros-args -p device_id:=0` made `/joy` work.
+If you need that workaround, run it in its own sourced terminal and check `ros2 topic info /joy` for multiple publishers.
+Avoid leaving duplicate joystick publishers active once input is working.
+
+If the enumerator stays empty, check Bluetooth is connected and `js0` exists before troubleshooting ROS.
+
+## 3. Initialize odometry before mapping
+
+Without a controller input, odometry may wait for its first steering command.
 In another robot SSH terminal, send the configured steering-center value.
-This moves the front wheels toward straight ahead but sends no throttle command.
+This sets steering and sends no throttle command:
 
 ```bash
 source /opt/ros/humble/setup.bash
 source ~/Desktop/f1tenth_ws/install/setup.bash
-
 ros2 topic pub --once /commands/servo/position \
   std_msgs/msg/Float64 "{data: 0.4564}"
-
 timeout 5s ros2 run tf2_ros tf2_echo odom base_link
 ```
 
-Confirm it prints transforms before starting SLAM.
-Zero translation and rotation are expected while stationary.
-An initial waiting message followed by transforms is normal.
-`0.4564` is this robot's configured steering center; recheck it if the VESC calibration changes.
+Confirm `tf2_echo` prints transforms; zero translation and rotation are expected while stationary.
+The steering-center value is specific to this car and may need rechecking after VESC calibration changes.
 
-## 3. Start SLAM Toolbox
+## 4. Start mapping
 
-In robot SSH terminal 2:
+In robot SSH terminal 2, start SLAM Toolbox:
 
 ```bash
 cd ~/Desktop/f1tenth_ws
@@ -49,14 +101,13 @@ source install/setup.bash
 ros2 launch localization mapping.launch.py mode:=mapping
 ```
 
-This is the command verified on the car after initializing odometry and restarting mapping.
-For Foxglove-only viewing, append `enable_rviz:=false` to avoid launching RViz.
+For Foxglove-only viewing, append `enable_rviz:=false` to avoid starting RViz.
 This launch also starts Nav2 navigation and the localization pose relay.
-Leave it running and allow about 10 seconds for the first map.
+Leave it running and allow about 10 seconds for the initial map.
 
-## 4. Connect Foxglove
+## 5. Connect Foxglove
 
-In another robot SSH terminal, start the bridge unless it is already running:
+Start the bridge in another robot SSH terminal unless it is already running:
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -64,50 +115,62 @@ source ~/Desktop/f1tenth_ws/install/setup.bash
 ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 ```
 
-In a local WSL terminal on your laptop, replace `ROBOT_IP`:
+In a local WSL terminal on your laptop, replace `ROBOT_IP` with the current robot IP:
 
 ```bash
 ssh -N -L 8765:localhost:8765 curc@ROBOT_IP
 ```
 
-Leave both terminals open.
+Leave the bridge and tunnel terminals open.
+In [Foxglove](https://app.foxglove.dev), open a Foxglove WebSocket connection to `ws://localhost:8765`.
+Add a 3D panel, set its display frame to `map`, and enable `/map` and `/scan`.
+Use a top-down view and zoom out to see the surrounding walls.
 
-1. Open [Foxglove](https://app.foxglove.dev).
-2. Choose **Open connection → Foxglove WebSocket** and connect to `ws://localhost:8765`.
-3. Add a **3D panel**, set **Display frame** to `map`, and enable `/map` and `/scan`.
-4. Use a top-down view and zoom out to see the walls.
+## 6. Drive slowly to extend the map
 
-A stationary robot can show its initial surroundings.
-To extend the map, drive slowly with the controller using [controller driving](controller-driving.md).
-The configured map update interval is about five seconds.
+Keep the car on the ground in a clear area, and be ready to stop it.
+The repository's [controller configuration](../f1tenth_ws/src/f1tenth_system/f1tenth_stack/config/joy_teleop.yaml) uses zero-based indices:
 
-## If no map appears
+| Function | Input | Command range |
+| --- | --- | --- |
+| Hold to enable driving | `buttons[4]` | Enabled while held |
+| Forward/reverse | `axes[1]` | Up to ±2 m/s |
+| Steering | `axes[2]` | Up to ±0.34 rad |
 
-Repeated `queue is full` messages together with `odom ... frame does not exist` mean scans are waiting for a missing transform.
-Complete step 2, then Ctrl+C only the mapping launch and rerun step 3.
-Keep bringup running so the initialized odometry node stays alive.
-This resolved the failure on our car.
+Check `/joy` and verify the physical button and stick indices before moving.
+Use small inputs and drive slowly; release the enable button or center controls to stop.
+Do not assume `buttons[4]` is L1 because button ordering depends on the controller.
 
-Check map delivery from a sourced robot terminal:
+SLAM Toolbox uses LiDAR scans plus odometry/TF to place them in the map.
+The current config sets `minimum_travel_distance: 0.5` m and `minimum_travel_heading: 0.5` rad, so drive at least that far or turn enough for SLAM to accept additional scans.
+`map_update_interval: 5.0` controls map publication cadence; a fresh timestamp alone does not mean occupancy cells changed.
+
+## If the map frame or map is missing
+
+The key transforms are `odom → base_link` from VESC odometry, `base_link → laser` from the static transform, and `map → odom` from SLAM Toolbox.
+Check the nodes, scan, and transforms from a sourced robot terminal:
+
+```bash
+ros2 node list | grep -E 'slam_toolbox|vesc_to_odom|urg_node'
+ros2 topic hz /scan
+ros2 param get /vesc_to_odom_node publish_tf
+timeout 5s ros2 run tf2_ros tf2_echo odom base_link
+timeout 5s ros2 run tf2_ros tf2_echo base_link laser
+```
+
+If `odom → base_link` is missing, initialize odometry as in step 3.
+`Message Filter dropping ... queue is full` alongside an absent `odom` frame means scans are waiting for the transform.
+Keep bringup running, Ctrl+C only the mapping launch, initialize odometry, then restart mapping.
+Do not start another bringup to fix it.
+
+Check that `/map` has data using transient-local QoS:
 
 ```bash
 timeout 10s ros2 topic echo /map --once --field info \
   --qos-durability transient_local --qos-reliability reliable
 ```
 
-A publisher count of one does not prove a map has been generated.
-If transforms are still missing, check the inputs and bringup errors:
-
-```bash
-ros2 param get /vesc_to_odom_node publish_tf
-timeout 5s ros2 topic echo /sensors/core --once
-timeout 5s ros2 topic echo /sensors/servo_position_command --once
-```
-
-Steering feedback is not latched; a late subscriber may see nothing after a one-shot command.
-Use the `odom` transform check to confirm initialization succeeded.
-If `vesc_msgs/msg/VescStateStamped` is reported as invalid, source the hardware workspace in that terminal and retry.
-Do not substitute a static `odom` transform for real odometry.
+If `/map` exists but Foxglove has no `map` frame, refresh the connection after confirming `map → odom` is present in `/tf`.
 
 ## Save the map
 
