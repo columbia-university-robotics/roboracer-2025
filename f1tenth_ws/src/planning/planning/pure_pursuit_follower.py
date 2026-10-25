@@ -86,9 +86,14 @@ class PurePursuitFollower(Node):
         self.current_path = [(pose.pose.position.x, pose.pose.position.y) for pose in msg.poses]
         self.target_index = 0
         self.get_logger().info(f"Received new path with {len(self.current_path)} poses.")
+        if not self.current_path:
+            self.publish_drive(0.0, 0.0)
 
     def control_callback(self) -> None:
-        if self.current_pose is None or not self.current_path:
+        if not self.current_path:
+            self.publish_drive(0.0, 0.0)
+            return
+        if self.current_pose is None:
             return
 
         current_xy = (self.current_pose.x, self.current_pose.y)

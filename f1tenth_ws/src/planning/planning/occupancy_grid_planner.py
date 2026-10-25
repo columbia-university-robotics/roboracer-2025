@@ -7,8 +7,11 @@ import rclpy
 from geometry_msgs.msg import Pose, PoseArray, PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.node import Node
+from rclpy.time import Time
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from scipy import ndimage
+from tf2_geometry_msgs import do_transform_pose_stamped
+from tf2_ros import Buffer, TransformException, TransformListener
 
 
 def yaw_from_quaternion(q) -> float:
@@ -36,6 +39,9 @@ class OccupancyGridPlanner(Node):
         self.map_msg: OccupancyGrid | None = None
         self.occupied: np.ndarray | None = None
         self.current_pose: Pose | None = None
+        self.current_pose_frame = ""
+        self.tf_buffer = Buffer(node=self)
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         latched_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -100,8 +106,36 @@ class OccupancyGridPlanner(Node):
 
     def pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         self.current_pose = msg.pose.pose
+        self.current_pose_frame = msg.header.frame_id
+
+    def goal_in_map(self, msg: PoseStamped) -> PoseStamped:
+        """Resolve a goal at its measurement time; never relabel coordinates."""
+        target_frame = self.map_msg.header.frame_id
+        if not target_frame or not msg.header.frame_id:
+            raise ValueError("Map and goal must both have a non-empty frame_id.")
+        p, q = msg.pose.position, msg.pose.orientation
+        if not all(math.isfinite(v) for v in (p.x, p.y, p.z, q.x, q.y, q.z, q.w)):
+            raise ValueError("Goal contains non-finite coordinates.")
+        if not math.isclose(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w, 1.0,
+                            rel_tol=0.0, abs_tol=1e-3):
+            raise ValueError("Goal must contain a unit orientation quaternion.")
+        if msg.header.frame_id == target_frame:
+            return msg
+        if msg.header.stamp.sec == 0 and msg.header.stamp.nanosec == 0:
+            raise ValueError("A goal in another frame requires a non-zero timestamp.")
+        # No blocking timeout: the single-threaded executor must remain able to
+        # receive TF. If this timestamp is not available yet, reject and retry.
+        transform = self.tf_buffer.lookup_transform(
+            target_frame, msg.header.frame_id, Time.from_msg(msg.header.stamp)
+        )
+        result = do_transform_pose_stamped(msg, transform)
+        result.header.stamp = msg.header.stamp
+        return result
 
     def goal_callback(self, msg: PoseStamped) -> None:
+        # A new request replaces the old route, including when validation or
+        # planning fails. The follower must explicitly stop on an empty Path.
+        self.publish_outputs([])
         if self.map_msg is None or self.occupied is None:
             self.get_logger().warning("Cannot plan: no occupancy grid received.")
             return
@@ -109,10 +143,19 @@ class OccupancyGridPlanner(Node):
             self.get_logger().warning("Cannot plan: no localization pose received.")
             return
 
+        if not self.map_msg.header.frame_id or self.current_pose_frame != self.map_msg.header.frame_id:
+            self.get_logger().warning("Cannot plan: localization and map frames must match.")
+            return
+        try:
+            goal = self.goal_in_map(msg)
+        except (ValueError, TransformException) as exc:
+            self.get_logger().warning(f"Cannot plan: goal frame conversion failed: {exc}")
+            return
+
         start_cell = self.world_to_grid(
             self.current_pose.position.x, self.current_pose.position.y
         )
-        goal_cell = self.world_to_grid(msg.pose.position.x, msg.pose.position.y)
+        goal_cell = self.world_to_grid(goal.pose.position.x, goal.pose.position.y)
         if start_cell is None or goal_cell is None:
             self.get_logger().warning("Start or goal pose is outside the map.")
             return
