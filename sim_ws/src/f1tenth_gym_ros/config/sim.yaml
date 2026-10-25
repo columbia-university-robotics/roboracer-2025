@@ -36,11 +36,11 @@ bridge:
 
     # LiDAR related parameters
     lidar_enabled: True
-    lidar_base_link_to_lidar_tf: [0.275, 0.0, 0.0] # x, y, yaw from base_link to lidar
+    lidar_base_link_to_lidar_tf: [0.27, 0.0, 0.0] # x, y, yaw from base_link to lidar
     lidar_noise_std: 0.01 # LiDAR accuracy - modelled as zero-mean Gaussian noise with this standard deviation (in meters)
     
     # laserscan parameters (default values are SICK TIM571 configuration (270° FOV))
-    scan_num_beams: 819 # Number of laser beams in LiDAR scan (resolution = (scan_angle_max - scan_angle_min) / scan_num_beams)
+    scan_num_beams: 1081 # Number of laser beams in LiDAR scan (resolution = (scan_angle_max - scan_angle_min) / scan_num_beams)
     scan_range_min: 0.05 # 5cm
     scan_range_max: 25.0 # 25m
     # Angles have to be in degrees
