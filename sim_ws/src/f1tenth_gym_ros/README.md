@@ -216,3 +216,29 @@ This is due to an outdated scipy version. To resolve this, run ```pip3 install -
 
 ### "opencv>=3. invalid" error on pip install
 This indicates that you have outdated pip, wheel or setuptools. To resolve this, you can run ```python3 -m pip install --upgrade pip wheel setuptools```. This will upgrade all tools used by python when pip installing packages.
+
+
+## Ego initial-pose frame validation
+
+The `/initialpose` ego reset callback accepts only exact `header.frame_id: map`,
+matching this simulator's odometry and world TF. Empty or other frames produce a
+warning and return without resetting the environment. The existing paused check
+runs first. This is validation, not automatic TF conversion.
+
+From the repository root, test the actual callback with mocked simulator/logger
+boundaries (requires NumPy and SciPy, but not ROS):
+
+```bash
+python3 -m unittest discover -s sim_ws/src/f1tenth_gym_ros/test -p 'test_initial_pose_frame.py' -v
+```
+
+The equivalent callback tests passed on the deployed VM on 2026-10-18. In live
+planning-only simulation on 2026-10-25, three empty-frame reset requests produced
+rejection warnings without changing the observed (-12, 0) position. A map-frame
+10-degree yaw reset and restoration to identity were confirmed through odometry.
+The final observed pose was (-12, 0) with quaternion (0, 0, 0, 1).
+
+This does not change opponent resets, validate numeric pose contents, clear an
+old planner route, or zero drive requests on reset. Rejected requests do not stop
+a moving car. Test resets in planning-only mode and send a new planning goal after
+resetting before enabling driving.

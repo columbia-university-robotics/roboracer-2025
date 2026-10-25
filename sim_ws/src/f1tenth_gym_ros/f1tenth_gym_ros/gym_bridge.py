@@ -525,6 +525,13 @@ class GymBridge(Node):
         if self.sim_paused:
             return  # Skip stepping the sim if paused
 
+        # Simulator odometry and world transforms are expressed in map.
+        if pose_msg.header.frame_id != 'map':
+            self.get_logger().warning(
+                f"Ignoring initial pose: expected frame 'map', got {pose_msg.header.frame_id!r}"
+            )
+            return
+
         rx = pose_msg.pose.pose.position.x
         ry = pose_msg.pose.pose.position.y
         rqx = pose_msg.pose.pose.orientation.x
