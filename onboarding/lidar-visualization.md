@@ -6,7 +6,7 @@ In an SSH terminal:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/Desktop/f1tenth_ws/install/setup.bash
+source ~/Desktop/roboracer-2025/f1tenth_ws/install/setup.bash
 ping -c 3 -W 2 192.168.0.10
 
 ros2 run urg_node urg_node_driver --ros-args \
@@ -26,7 +26,7 @@ In another SSH terminal:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/Desktop/f1tenth_ws/install/setup.bash
+source ~/Desktop/roboracer-2025/f1tenth_ws/install/setup.bash
 ros2 topic echo /scan --once --field header --qos-reliability best_effort
 ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 ```

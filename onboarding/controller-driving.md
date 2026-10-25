@@ -7,7 +7,7 @@ Run these commands over SSH on the robot:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/Desktop/f1tenth_ws/install/setup.bash
+source ~/Desktop/roboracer-2025/f1tenth_ws/install/setup.bash
 ros2 run joy joy_enumerate_devices
 ```
 
@@ -31,7 +31,7 @@ In another SSH terminal:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/Desktop/f1tenth_ws/install/setup.bash
+source ~/Desktop/roboracer-2025/f1tenth_ws/install/setup.bash
 ros2 topic echo /joy
 ```
 

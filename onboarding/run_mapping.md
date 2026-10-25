@@ -50,7 +50,7 @@ Do not run a second bringup alongside an existing one; both may try to use the V
 Stop any old bringup with Ctrl+C, then use robot SSH terminal 0:
 
 ```bash
-cd ~/Desktop/f1tenth_ws
+cd ~/Desktop/roboracer-2025/f1tenth_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 launch f1tenth_stack bringup_launch.py
@@ -81,7 +81,7 @@ This sets steering and sends no throttle command:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/Desktop/f1tenth_ws/install/setup.bash
+source ~/Desktop/roboracer-2025/f1tenth_ws/install/setup.bash
 ros2 topic pub --once /commands/servo/position \
   std_msgs/msg/Float64 "{data: 0.4564}"
 timeout 5s ros2 run tf2_ros tf2_echo odom base_link
@@ -95,7 +95,7 @@ The steering-center value is specific to this car and may need rechecking after 
 In robot SSH terminal 2, start SLAM Toolbox:
 
 ```bash
-cd ~/Desktop/f1tenth_ws
+cd ~/Desktop/roboracer-2025/f1tenth_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 ros2 launch localization mapping.launch.py mode:=mapping
@@ -111,7 +111,7 @@ Start the bridge in another robot SSH terminal unless it is already running:
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/Desktop/f1tenth_ws/install/setup.bash
+source ~/Desktop/roboracer-2025/f1tenth_ws/install/setup.bash
 ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 ```
 
