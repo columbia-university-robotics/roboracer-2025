@@ -38,6 +38,7 @@ from geometry_msgs.msg import TransformStamped
 from geometry_msgs.msg import Transform
 from geometry_msgs.msg import Quaternion
 from ackermann_msgs.msg import AckermannDriveStamped
+from frame_utils import FrameTransformer
 from tf2_ros import TransformBroadcaster
 from ament_index_python.packages import get_package_share_directory
 
@@ -408,6 +409,7 @@ class GymBridge(Node):
 
         # transform broadcaster
         self.br = TransformBroadcaster(self)
+        self._frames = FrameTransformer(self)
 
         # publishers
         self.ego_scan_pub = self.create_publisher(LaserScan, ego_scan_topic, 10)
@@ -525,12 +527,17 @@ class GymBridge(Node):
         if self.sim_paused:
             return  # Skip stepping the sim if paused
 
-        rx = pose_msg.pose.pose.position.x
-        ry = pose_msg.pose.pose.position.y
-        rqx = pose_msg.pose.pose.orientation.x
-        rqy = pose_msg.pose.pose.orientation.y
-        rqz = pose_msg.pose.pose.orientation.z
-        rqw = pose_msg.pose.pose.orientation.w
+        pose = PoseStamped(header=pose_msg.header, pose=pose_msg.pose.pose)
+        map_pose = self._frames.transform_pose(pose, 'map')
+        if map_pose is None:
+            return
+
+        rx = map_pose.pose.position.x
+        ry = map_pose.pose.position.y
+        rqx = map_pose.pose.orientation.x
+        rqy = map_pose.pose.orientation.y
+        rqz = map_pose.pose.orientation.z
+        rqw = map_pose.pose.orientation.w
         rtheta = Rotation.from_quat([rqx, rqy, rqz, rqw]).as_euler('xyz')[2]
         self.ego_pose = [rx, ry, rtheta]
         self.env.reset(options={"poses": np.array(self._all_poses())})
@@ -540,12 +547,16 @@ class GymBridge(Node):
         if self.sim_paused:
             return  # Skip stepping the sim if paused
 
-        rx = pose_msg.pose.position.x
-        ry = pose_msg.pose.position.y
-        rqx = pose_msg.pose.orientation.x
-        rqy = pose_msg.pose.orientation.y
-        rqz = pose_msg.pose.orientation.z
-        rqw = pose_msg.pose.orientation.w
+        map_pose = self._frames.transform_pose(pose_msg, 'map')
+        if map_pose is None:
+            return
+
+        rx = map_pose.pose.position.x
+        ry = map_pose.pose.position.y
+        rqx = map_pose.pose.orientation.x
+        rqy = map_pose.pose.orientation.y
+        rqz = map_pose.pose.orientation.z
+        rqw = map_pose.pose.orientation.w
         rtheta = Rotation.from_quat([rqx, rqy, rqz, rqw]).as_euler('xyz')[2]
         self.opps[opp_index].pose = [rx, ry, rtheta]
         self.env.reset(options={"poses": np.array(self._all_poses())})
