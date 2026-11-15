@@ -74,7 +74,7 @@ select_runtime "$RUNTIME_OVERRIDE"
 maybe_open_browser "$OPEN_BROWSER"
 
 REAL_WORKSPACE_ROOT="$(workspace_root_for_runtime "f1tenth_ws")"
-BUILD_COMMAND="colcon build --packages-select localization planning planner_web_ui"
+BUILD_COMMAND="colcon build --packages-select localization frame_utils planning planner_web_ui"
 LAUNCH_COMMAND="ros2 launch planner_web_ui real_pathplanning.launch.py map_file:=$(quote_for_bash "$(runtime_path "$MAP_FILE")") web_port:=8081 enable_rviz:=false"
 
 if [[ -n "$PLANNER_CONFIG" ]]; then
