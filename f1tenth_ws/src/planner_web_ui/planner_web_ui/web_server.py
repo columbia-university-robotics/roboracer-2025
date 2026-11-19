@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import rclpy
 from ament_index_python.packages import get_package_share_directory
+from frame_utils import FrameTransformer
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Path as NavPath
 from rclpy.node import Node
@@ -24,6 +25,16 @@ def yaw_from_quaternion(q) -> float:
 
 def quaternion_from_yaw(yaw: float) -> tuple[float, float]:
     return math.sin(yaw / 2.0), math.cos(yaw / 2.0)
+
+
+def pose_snapshot(msg: PoseStamped | None) -> dict[str, float] | None:
+    if msg is None:
+        return None
+    return {
+        "x": msg.pose.position.x,
+        "y": msg.pose.position.y,
+        "yaw": yaw_from_quaternion(msg.pose.orientation),
+    }
 
 
 def clamp_occupancy_value(value: int) -> int:
@@ -61,9 +72,10 @@ class PlannerWebUi(Node):
         self._lock = threading.Lock()
         self._map_version = 0
         self._map_snapshot: dict[str, Any] | None = None
-        self._pose_snapshot: dict[str, float] | None = None
-        self._goal_snapshot: dict[str, float] | None = None
-        self._path_snapshot: list[list[float]] = []
+        self._pose_msg: PoseStamped | None = None
+        self._goal_msg: PoseStamped | None = None
+        self._path_msg: NavPath | None = None
+        self._frames = FrameTransformer(self)
 
         self._static_dir = Path(get_package_share_directory("planner_web_ui")) / "static"
 
@@ -120,11 +132,16 @@ class PlannerWebUi(Node):
         return RequestHandler
 
     def map_callback(self, msg: OccupancyGrid) -> None:
+        if not msg.header.frame_id:
+            self.get_logger().warning(
+                "Ignoring a map with an empty frame_id.", throttle_duration_sec=5.0
+            )
+            return
         self._map_version += 1
         with self._lock:
             self._map_snapshot = {
                 "version": self._map_version,
-                "frameId": msg.header.frame_id or "map",
+                "frameId": msg.header.frame_id,
                 "width": msg.info.width,
                 "height": msg.info.height,
                 "resolution": msg.info.resolution,
@@ -141,43 +158,54 @@ class PlannerWebUi(Node):
 
     def pose_callback(self, msg: PoseWithCovarianceStamped) -> None:
         with self._lock:
-            self._pose_snapshot = {
-                "x": msg.pose.pose.position.x,
-                "y": msg.pose.pose.position.y,
-                "yaw": yaw_from_quaternion(msg.pose.pose.orientation),
-            }
+            self._pose_msg = PoseStamped(header=msg.header, pose=msg.pose.pose)
 
     def path_callback(self, msg: NavPath) -> None:
         with self._lock:
-            self._path_snapshot = [
-                [pose.pose.position.x, pose.pose.position.y] for pose in msg.poses
-            ]
+            self._path_msg = msg
 
     def goal_callback(self, msg: PoseStamped) -> None:
         with self._lock:
-            self._goal_snapshot = {
-                "x": msg.pose.position.x,
-                "y": msg.pose.position.y,
-                "yaw": yaw_from_quaternion(msg.pose.orientation),
-            }
+            self._goal_msg = msg
 
     def snapshot_state(self) -> dict[str, Any]:
         with self._lock:
             map_snapshot = self._map_snapshot
-            pose_snapshot = self._pose_snapshot
-            goal_snapshot = self._goal_snapshot
-            path_snapshot = list(self._path_snapshot)
+            pose = None
+            goal = None
+            path = None
+            if map_snapshot is not None:
+                frame_id = map_snapshot["frameId"]
+                # Retry pending messages on polling, then keep successful transforms.
+                if self._pose_msg is not None:
+                    pose = self._frames.transform_pose(self._pose_msg, frame_id)
+                    if pose is not None:
+                        self._pose_msg = pose
+                if self._goal_msg is not None:
+                    goal = self._frames.transform_pose(self._goal_msg, frame_id)
+                    if goal is not None:
+                        self._goal_msg = goal
+                if self._path_msg is not None:
+                    path = self._frames.transform_path(self._path_msg, frame_id)
+                    if path is not None:
+                        self._path_msg = path
+
+        path_snapshot = []
+        if path is not None:
+            path_snapshot = [
+                [pose.pose.position.x, pose.pose.position.y] for pose in path.poses
+            ]
 
         return {
             "ready": {
                 "map": map_snapshot is not None,
-                "pose": pose_snapshot is not None,
+                "pose": pose is not None,
                 "path": bool(path_snapshot),
             },
             "mapVersion": map_snapshot["version"] if map_snapshot else 0,
             "frameId": map_snapshot["frameId"] if map_snapshot else "map",
-            "pose": pose_snapshot,
-            "goal": goal_snapshot,
+            "pose": pose_snapshot(pose),
+            "goal": pose_snapshot(goal),
             "path": path_snapshot,
         }
 
@@ -188,11 +216,9 @@ class PlannerWebUi(Node):
             return dict(self._map_snapshot)
 
     def publish_goal(self, goal_x: float, goal_y: float, yaw: float | None) -> dict[str, float]:
-        with self._lock:
-            current_pose = dict(self._pose_snapshot) if self._pose_snapshot else None
-            frame_id = (
-                self._map_snapshot["frameId"] if self._map_snapshot is not None else "map"
-            )
+        state = self.snapshot_state()
+        current_pose = state["pose"]
+        frame_id = state["frameId"]
 
         goal_yaw = yaw if yaw is not None else default_goal_yaw(current_pose, goal_x, goal_y)
         qz, qw = quaternion_from_yaw(goal_yaw)
@@ -208,7 +234,7 @@ class PlannerWebUi(Node):
 
         goal_snapshot = {"x": goal_x, "y": goal_y, "yaw": goal_yaw}
         with self._lock:
-            self._goal_snapshot = goal_snapshot
+            self._goal_msg = msg
         return goal_snapshot
 
     def handle_get(self, handler: BaseHTTPRequestHandler) -> None:

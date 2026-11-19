@@ -16,4 +16,11 @@ It serves a small HTTP app that:
 
 By default the UI is served on `http://localhost:8081`.
 
+The map's `header.frame_id` is the display frame. The shared `frame_utils`
+package transforms pose, goal, and path messages into that frame using TF2 at
+their message timestamps. Path poses with an empty frame inherit the path's
+header. Messages with an empty source frame or unavailable TF are hidden, and
+pending transforms are retried when the browser polls. Successful transforms
+are cached. Maps with an empty frame are ignored.
+
 The repo-level wrapper scripts `scripts/pathplanning_sim.sh` and `scripts/pathplanning_real.sh` auto-detect native ROS versus Docker so the same command can be used on a Jetson or in the project container.
